@@ -156,9 +156,9 @@ export const pollRealtimeClient = new PollRealtimeClient()
 
 Adds the calling connection to the SignalR group for the specified poll. After joining, the connection receives all `ReceiveVote` broadcasts for that poll.
 
-<ParamField path="body.pollId" type="string" required>
-  The `id` of the poll to join, formatted as a UUID string (e.g. `"d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a"`).
-</ParamField>
+| Parameter | Type   | Required | Description |
+|-----------|--------|----------|-------------|
+| `pollId`  | string | Yes      | The `id` of the poll to join, formatted as a UUID string (e.g. `"d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a"`). |
 
 ```typescript
 await pollRealtimeClient.joinPoll(pollId)
@@ -169,9 +169,9 @@ await pollRealtimeClient.joinPoll(pollId)
 
 Removes the calling connection from the SignalR group for the specified poll. The connection will no longer receive `ReceiveVote` events for that poll.
 
-<ParamField path="body.pollId" type="string" required>
-  The `id` of the poll to leave, formatted as a UUID string.
-</ParamField>
+| Parameter | Type   | Required | Description |
+|-----------|--------|----------|-------------|
+| `pollId`  | string | Yes      | The `id` of the poll to leave, formatted as a UUID string. |
 
 ```typescript
 await pollRealtimeClient.leavePoll(pollId)

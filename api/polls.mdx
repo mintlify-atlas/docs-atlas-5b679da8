@@ -9,14 +9,18 @@ These endpoints let you list all polls, fetch a single poll with its options and
 
 ## GET /api/poll
 
-Returns all polls stored in the database. Each poll includes its options and current vote counts.
+Returns all polls stored in the database as a summary list. Options and vote counts are **not** included — use `GET /api/poll/{id}` to fetch a poll with its full option data.
+
+<Note>
+  The list endpoint intentionally omits the `options` array. The repository projects only the poll-level fields to keep list responses lightweight.
+</Note>
 
 ### Response
 
-`200 OK` — array of poll objects.
+`200 OK` — array of poll summary objects.
 
 <ResponseField name="[]" type="object[]">
-  <Expandable title="Poll object properties" defaultOpen>
+  <Expandable title="Poll list item properties" defaultOpen>
     <ResponseField name="id" type="string" required>
       Unique identifier for the poll (UUID v4).
     </ResponseField>
@@ -24,7 +28,7 @@ Returns all polls stored in the database. Each poll includes its options and cur
       Title of the poll.
     </ResponseField>
     <ResponseField name="description" type="string" required>
-      Optional descriptive text for the poll.
+      Descriptive text for the poll.
     </ResponseField>
     <ResponseField name="createdAt" type="string" required>
       ISO 8601 UTC timestamp of when the poll was created.
@@ -34,22 +38,6 @@ Returns all polls stored in the database. Each poll includes its options and cur
     </ResponseField>
     <ResponseField name="isClosed" type="boolean" required>
       Whether the poll has been manually closed.
-    </ResponseField>
-    <ResponseField name="options" type="object[]" required>
-      <Expandable title="Option object properties">
-        <ResponseField name="id" type="string" required>
-          Unique identifier for the option (UUID v4).
-        </ResponseField>
-        <ResponseField name="text" type="string" required>
-          Display text for the option.
-        </ResponseField>
-        <ResponseField name="voteCount" type="number" required>
-          Number of votes this option has received.
-        </ResponseField>
-        <ResponseField name="pollId" type="string" required>
-          ID of the poll this option belongs to.
-        </ResponseField>
-      </Expandable>
     </ResponseField>
   </Expandable>
 </ResponseField>
@@ -70,21 +58,15 @@ Returns all polls stored in the database. Each poll includes its options and cur
         "description": "Pick your favourite frontend framework for 2025.",
         "createdAt": "2025-06-01T12:00:00Z",
         "expiresAt": "2025-12-31T23:59:59Z",
-        "isClosed": false,
-        "options": [
-          {
-            "id": "a1b2c3d4-1111-2222-3333-aabbccddeeff",
-            "text": "React",
-            "voteCount": 42,
-            "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-          },
-          {
-            "id": "b2c3d4e5-2222-3333-4444-bbccddeeff00",
-            "text": "Vue",
-            "voteCount": 17,
-            "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-          }
-        ]
+        "isClosed": false
+      },
+      {
+        "id": "9e1f2a3b-8c7d-6e5f-4a3b-2c1d0e9f8a7b",
+        "title": "Favorite database engine?",
+        "description": "Which database do you reach for first?",
+        "createdAt": "2025-06-02T09:00:00Z",
+        "expiresAt": null,
+        "isClosed": false
       }
     ]
     ```
@@ -108,7 +90,7 @@ Returns all polls stored in the database. Each poll includes its options and cur
     }
     ```
 
-    The `usePolls` hook calls `getPolls()` from `poll-api.ts`, which sends `GET /api/poll` and returns `PollListItem[]`.
+    The `usePolls` hook calls `getPolls()` from `poll-api.ts`, which sends `GET /api/poll` and returns `PollListItem[]`. The `PollListItem` type has no `options` field — use `usePollDetail(pollId)` to fetch options and vote counts for a specific poll.
   </Tab>
 </Tabs>
 

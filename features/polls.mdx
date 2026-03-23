@@ -86,7 +86,7 @@ The response is the created `Poll` object, including the generated `Id` values f
 curl http://localhost:5000/api/poll
 ```
 
-Returns an array of `Poll` objects, each including their nested `Options`.
+Returns an array of poll summary objects. The list response omits the `options` array — it includes only `id`, `title`, `description`, `createdAt`, `expiresAt`, and `isClosed`.
 
 ### Get a single poll
 
@@ -109,7 +109,7 @@ A poll moves through the following states from creation to completion:
 
 <CardGroup cols={2}>
   <Card title="PollList" icon="list">
-    Renders all polls as selectable buttons. Highlights the active selection and shows an "Active" or "Closed" badge based on `isClosed`.
+    Renders all polls as selectable buttons. Highlights the active selection and shows an "Activa" or "Cerrada" badge based on `isClosed`.
   </Card>
   <Card title="PollOptions" icon="check-square">
     Displays each option as a clickable button showing the option text and current `voteCount`. Disables all buttons when the poll is closed or a vote is in flight.
