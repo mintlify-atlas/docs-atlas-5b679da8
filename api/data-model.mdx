@@ -1,0 +1,255 @@
+---
+title: Data model
+description: Reference for FlashVote's core entities, DTOs, and their relationships as persisted by EF Core.
+---
+
+FlashVote's data layer has two entities — `Poll` and `Option` — and two DTOs used for creating and updating polls. All IDs are GUIDs. The database is SQLite, managed through Entity Framework Core.
+
+## Relationships
+
+A `Poll` owns a collection of `Option` records. Each `Option` carries a `PollId` foreign key that references its parent `Poll`. The EF Core model configures this as a one-to-many relationship with cascade delete: removing a `Poll` automatically removes all of its `Option` rows.
+
+In prose: one poll → many options; each option belongs to exactly one poll.
+
+<Tabs>
+  <Tab title="Entities">
+    ### Poll
+
+    Represents a single poll including its metadata and the list of voting options.
+
+    <ResponseField name="Id" type="Guid" required>
+      Primary key. Auto-generated when a poll is created.
+    </ResponseField>
+
+    <ResponseField name="Title" type="string" required>
+      Short display name for the poll.
+    </ResponseField>
+
+    <ResponseField name="Description" type="string" required>
+      Longer descriptive text for the poll. Defaults to an empty string.
+    </ResponseField>
+
+    <ResponseField name="CreatedAt" type="DateTime" required>
+      UTC timestamp set at creation time by the service layer.
+    </ResponseField>
+
+    <ResponseField name="ExpiresAt" type="DateTime?">
+      Optional UTC timestamp after which the poll is considered expired. `null` means no expiry.
+    </ResponseField>
+
+    <ResponseField name="IsClosed" type="bool" required>
+      `true` when the poll has been manually closed. Set to `false` on creation.
+    </ResponseField>
+
+    <ResponseField name="Options" type="List&lt;Option&gt;" required>
+      Navigation property. Populated when the poll is fetched by ID. Empty in list responses.
+    </ResponseField>
+
+    ---
+
+    ### Option
+
+    Represents a single voting choice within a poll.
+
+    <ResponseField name="Id" type="Guid" required>
+      Primary key. Auto-generated when a poll is created.
+    </ResponseField>
+
+    <ResponseField name="Text" type="string" required>
+      The label shown to users for this voting choice.
+    </ResponseField>
+
+    <ResponseField name="VoteCount" type="int" required>
+      Running total of votes cast for this option. Incremented atomically by the repository.
+    </ResponseField>
+
+    <ResponseField name="PollId" type="Guid" required>
+      Foreign key referencing the parent `Poll.Id`.
+    </ResponseField>
+  </Tab>
+
+  <Tab title="DTOs">
+    ### CreatePollDto
+
+    Sent as the request body to `POST /api/poll` to create a new poll.
+
+    <ResponseField name="Title" type="string" required>
+      Display name for the poll.
+    </ResponseField>
+
+    <ResponseField name="Description" type="string" required>
+      Descriptive text for the poll. Defaults to an empty string.
+    </ResponseField>
+
+    <ResponseField name="ExpiresAt" type="DateTime?">
+      Optional expiry timestamp. Omit or set to `null` for no expiry.
+    </ResponseField>
+
+    <ResponseField name="Options" type="List&lt;string&gt;" required>
+      Ordered list of option labels. Each string becomes an `Option` record with `VoteCount` initialized to `0`.
+    </ResponseField>
+
+    ---
+
+    ### UpdatePollDto
+
+    Used to update an existing poll's metadata and options.
+
+    <ResponseField name="Title" type="string" required>
+      Updated display name.
+    </ResponseField>
+
+    <ResponseField name="Description" type="string" required>
+      Updated descriptive text.
+    </ResponseField>
+
+    <ResponseField name="ExpiresAt" type="DateTime?">
+      Updated optional expiry timestamp.
+    </ResponseField>
+
+    <ResponseField name="IsClosed" type="bool" required>
+      Set to `true` to close the poll.
+    </ResponseField>
+
+    <ResponseField name="Options" type="List&lt;string&gt;" required>
+      Updated list of option labels.
+    </ResponseField>
+  </Tab>
+</Tabs>
+
+## EF Core DbContext
+
+`ApplicationDbContext` registers both entities and configures the one-to-many relationship between `Poll` and `Option`:
+
+```csharp
+public class ApplicationDbContext : DbContext
+{
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<Poll> Polls => Set<Poll>();
+    public DbSet<Option> Options => Set<Option>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<Poll>()
+            .HasMany(p => p.Options)
+            .WithOne()
+            .HasForeignKey(o => o.PollId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+```
+
+<Info>
+  The `WithOne()` call has no argument because `Option` does not declare an explicit navigation property back to `Poll`. EF Core resolves the relationship through the `PollId` foreign key alone.
+</Info>
+
+## Example JSON
+
+The shapes below match what the REST API returns. The list endpoint (`GET /api/poll`) omits the `options` array; the detail endpoint (`GET /api/poll/{id}`) includes it.
+
+<Tabs>
+  <Tab title="Poll (detail)">
+    ```json
+    {
+      "id": "d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a",
+      "title": "Favorite frontend framework?",
+      "description": "Pick the framework you use most in 2025.",
+      "createdAt": "2025-03-20T14:00:00Z",
+      "expiresAt": "2025-04-01T00:00:00Z",
+      "isClosed": false,
+      "options": [
+        {
+          "id": "a1b2c3d4-0000-0000-0000-000000000001",
+          "text": "React",
+          "voteCount": 42,
+          "pollId": "d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a"
+        },
+        {
+          "id": "a1b2c3d4-0000-0000-0000-000000000002",
+          "text": "Vue",
+          "voteCount": 17,
+          "pollId": "d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a"
+        },
+        {
+          "id": "a1b2c3d4-0000-0000-0000-000000000003",
+          "text": "Svelte",
+          "voteCount": 9,
+          "pollId": "d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a"
+        }
+      ]
+    }
+    ```
+  </Tab>
+
+  <Tab title="Poll (list item)">
+    ```json
+    {
+      "id": "d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a",
+      "title": "Favorite frontend framework?",
+      "description": "Pick the framework you use most in 2025.",
+      "createdAt": "2025-03-20T14:00:00Z",
+      "expiresAt": "2025-04-01T00:00:00Z",
+      "isClosed": false
+    }
+    ```
+  </Tab>
+
+  <Tab title="Option">
+    ```json
+    {
+      "id": "a1b2c3d4-0000-0000-0000-000000000001",
+      "text": "React",
+      "voteCount": 42,
+      "pollId": "d3b6a1e2-4f5c-4a2b-9e7d-1c2b3d4e5f6a"
+    }
+    ```
+  </Tab>
+
+  <Tab title="CreatePollDto">
+    ```json
+    {
+      "title": "Favorite frontend framework?",
+      "description": "Pick the framework you use most in 2025.",
+      "expiresAt": "2025-04-01T00:00:00Z",
+      "options": ["React", "Vue", "Svelte"]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Frontend TypeScript types
+
+The frontend mirrors the API shapes with these interfaces:
+
+```typescript
+export interface PollOption {
+  id: string
+  text: string
+  voteCount: number
+  pollId: string
+}
+
+export interface PollListItem {
+  id: string
+  title: string
+  description: string
+  createdAt: string
+  expiresAt: string | null
+  isClosed: boolean
+}
+
+export interface PollDetail extends PollListItem {
+  options: PollOption[]
+}
+
+export interface VoteParams {
+  pollId: string
+  optionId: string
+}
+```
+
+`PollDetail` extends `PollListItem` to add the `options` array, matching the difference between the list and detail API responses.

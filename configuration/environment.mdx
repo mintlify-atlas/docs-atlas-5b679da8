@@ -1,0 +1,112 @@
+---
+title: Environment variables
+description: Configure FlashVote's runtime settings for both the frontend and backend through environment variables and appsettings.
+---
+
+FlashVote uses environment variables on the frontend and `appsettings.json` on the backend to control runtime behavior such as the API base URL, logging levels, and the host binding.
+
+## Frontend environment variables
+
+The frontend is built with Vite. Vite only exposes variables prefixed with `VITE_` to browser-side code — any variable without this prefix is not available at runtime.
+
+<Note>
+  Vite's security model requires environment variables to be explicitly prefixed with `VITE_` before they are embedded in the client bundle. Variables without this prefix are stripped at build time and will be `undefined` in the browser.
+</Note>
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `VITE_API_BASE_URL` | No | `http://192.168.10.34:5000` | Base URL for all HTTP requests to the FlashVote backend API and SignalR hub. |
+
+### Fallback behavior
+
+When `VITE_API_BASE_URL` is not defined, the HTTP client falls back to the hardcoded default value set in `src/services/http.ts`:
+
+```typescript
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://192.168.10.34:5000'
+```
+
+This default points to a specific LAN address. In most development environments this will not resolve correctly, so you should always define `VITE_API_BASE_URL` explicitly.
+
+### Example `.env` file
+
+Create a `.env` file in the `FlashVoteFrontend/` directory:
+
+```env
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+<Tip>
+  Use a `.env.local` file instead of `.env` for machine-specific overrides. `.env.local` is loaded by Vite automatically and should be added to `.gitignore` so local addresses and credentials are never committed to the repository.
+</Tip>
+
+## Backend configuration
+
+The backend is configured through the standard ASP.NET Core `appsettings.json` and `appsettings.Development.json` files.
+
+### appsettings.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
+```
+
+### appsettings.Development.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  }
+}
+```
+
+### Database connection
+
+The SQLite connection string is set directly in `Program.cs` rather than in `appsettings.json`:
+
+```csharp
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    options.UseSqlite("Data Source=flashvote.db");
+});
+```
+
+This creates a `flashvote.db` file in the working directory when the backend starts. To use a different path, move the connection string into `appsettings.json` under a `ConnectionStrings` key and read it with `builder.Configuration.GetConnectionString("Default")`.
+
+### Host and port
+
+The backend binds to `http://0.0.0.0:5000` by default, set in `Program.cs`:
+
+```csharp
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
+```
+
+To change the port without modifying source code, use the `--urls` flag at startup:
+
+```bash
+dotnet run --urls "http://0.0.0.0:8080"
+```
+
+Alternatively, override the binding in `launchSettings.json` under `FlashVoteBackend/Properties/`:
+
+```json
+{
+  "profiles": {
+    "http": {
+      "applicationUrl": "http://localhost:8080"
+    }
+  }
+}
+```
+
+When you change the backend port, update `VITE_API_BASE_URL` in the frontend `.env` file to match.

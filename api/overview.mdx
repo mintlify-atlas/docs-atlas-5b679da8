@@ -1,0 +1,82 @@
+---
+title: API overview
+description: Reference for FlashVote's REST API — base URLs, available endpoints, content types, and error format.
+---
+
+The FlashVote REST API exposes endpoints for creating polls, retrieving polls, and submitting votes. All endpoints are under the `/api/poll` base route.
+
+## Base URL
+
+```
+http://localhost:5000
+```
+
+<Note>
+  A production URL has not been assigned yet. The backend binds to `0.0.0.0:5000` by default, which makes it reachable on all network interfaces at port 5000.
+</Note>
+
+## Base route
+
+All REST endpoints are prefixed with `/api/poll`.
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/poll` | Return all polls |
+| `GET` | `/api/poll/{id}` | Return a single poll by ID |
+| `POST` | `/api/poll` | Create a new poll |
+| `POST` | `/api/poll/{pollId}/vote/{optionId}` | Submit a vote for an option |
+
+## Authentication
+
+No authentication is required. All endpoints are publicly accessible without tokens, API keys, or session credentials.
+
+<Warning>
+  Because there is no authentication, any client can create polls or vote as many times as they choose. This is suitable for development and demonstration only. Authentication and authorization are not yet implemented.
+</Warning>
+
+## Content type
+
+All requests that include a body must send `Content-Type: application/json`. All responses are returned as `application/json`.
+
+## Error format
+
+When a request cannot be processed, the API returns an appropriate HTTP status code and a JSON body with a `message` field:
+
+```json
+{
+  "message": "Error description here"
+}
+```
+
+The `POST /api/poll` endpoint returns this format when poll creation fails. `GET /api/poll/{id}` and `POST /api/poll/{pollId}/vote/{optionId}` return `404 Not Found` (no body) when the resource does not exist.
+
+## Interactive exploration
+
+When running in development mode, Swagger UI is available at `/swagger` for interactive API exploration.
+
+```
+http://localhost:5000/swagger
+```
+
+<Note>
+  The OpenAPI specification is served at `/openapi/v1.json`. You can use it to generate clients or import the spec into tools like Postman or Insomnia.
+
+  ```
+  http://localhost:5000/openapi/v1.json
+  ```
+
+  Both `/swagger` and `/openapi/v1.json` are only available when the backend runs in development mode.
+</Note>
+
+## Explore the endpoints
+
+<CardGroup cols={2}>
+  <Card title="Polls" icon="list" href="/api/polls">
+    Create polls, list all polls, and fetch a single poll with its options and vote counts.
+  </Card>
+  <Card title="Voting" icon="check" href="/api/voting">
+    Submit a vote for a specific option and trigger a real-time SignalR broadcast to all connected clients.
+  </Card>
+</CardGroup>

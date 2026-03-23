@@ -1,0 +1,234 @@
+---
+title: Real-time updates
+description: How FlashVote uses SignalR to stream live vote updates to all connected clients.
+---
+
+FlashVote uses ASP.NET Core SignalR to push vote updates to the browser the moment they are recorded. Clients join a poll-specific group and receive a `ReceiveVote` event whenever any client votes, triggering a cache refresh that re-renders charts and counters without a manual page reload.
+
+## Architecture overview
+
+- **Hub endpoint**: `/pollhub`
+- **Groups**: each poll has its own group identified by the poll's GUID string
+- **Server-to-client event**: `ReceiveVote(optionId: string)`
+- **Client-to-server methods**: `JoinPoll(pollId)` and `LeavePoll(pollId)`
+
+## Hub definition
+
+```csharp
+public class PollHub : Hub
+{
+    public async Task JoinPoll(string pollId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, pollId);
+    }
+
+    public async Task LeavePoll(string pollId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, pollId);
+    }
+}
+```
+
+When a client votes, `PollService` uses `IHubContext<PollHub>` to broadcast to the group:
+
+```csharp
+await _hubContext.Clients.Group(pollId.ToString())
+    .SendAsync("ReceiveVote", optionId);
+```
+
+## Client connection setup
+
+The frontend manages a single shared `PollRealtimeClient` instance exported as `pollRealtimeClient`.
+
+```typescript
+import {
+  HubConnection,
+  HubConnectionBuilder,
+  HubConnectionState,
+  LogLevel,
+} from '@microsoft/signalr'
+import { getApiBaseUrl } from '@/services/http'
+
+type VoteListener = (optionId: string) => void
+type StateListener = (state: HubConnectionState) => void
+
+class PollRealtimeClient {
+  private connection: HubConnection | null = null
+  private voteListeners = new Set<VoteListener>()
+  private stateListeners = new Set<StateListener>()
+
+  async connect() {
+    if (!this.connection) {
+      this.connection = new HubConnectionBuilder()
+        .withUrl(`${getApiBaseUrl()}/pollhub`, {
+          withCredentials: true,
+        })
+        .withAutomaticReconnect()
+        .configureLogging(LogLevel.Warning)
+        .build()
+
+      this.connection.on('ReceiveVote', (optionId: string) => {
+        this.voteListeners.forEach((listener) => listener(optionId))
+      })
+
+      this.connection.onclose(() => this.emitState())
+      this.connection.onreconnecting(() => this.emitState())
+      this.connection.onreconnected(() => this.emitState())
+    }
+
+    if (this.connection.state === HubConnectionState.Disconnected) {
+      await this.connection.start()
+      this.emitState()
+    }
+
+    return this.connection
+  }
+
+  async joinPoll(pollId: string) {
+    const connection = await this.connect()
+    await connection.invoke('JoinPoll', pollId)
+  }
+
+  async leavePoll(pollId: string) {
+    if (!this.connection || this.connection.state !== HubConnectionState.Connected) {
+      return
+    }
+    await this.connection.invoke('LeavePoll', pollId)
+  }
+}
+
+export const pollRealtimeClient = new PollRealtimeClient()
+```
+
+<Note>
+  `pollRealtimeClient` is a module-level singleton. All components share the same underlying `HubConnection`, so the WebSocket is established once regardless of how many polls are viewed in a session. Multiple consumers register listeners via `addVoteListener` and `addStateListener` without creating additional connections.
+</Note>
+
+## usePollRealtime hook
+
+The `usePollRealtime` hook manages group membership for the currently viewed poll and triggers TanStack Query cache invalidation on every incoming `ReceiveVote` event.
+
+```typescript
+import { HubConnectionState } from '@microsoft/signalr'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { pollKeys } from '@/lib/query-keys'
+import { pollRealtimeClient } from '@/services/signalr'
+
+export function usePollRealtime(activePollId: string | null) {
+  const queryClient = useQueryClient()
+  const previousPollIdRef = useRef<string | null>(null)
+  const activePollIdRef = useRef<string | null>(activePollId)
+  const [connectionState, setConnectionState] = useState<HubConnectionState>(
+    pollRealtimeClient.getConnectionState(),
+  )
+
+  useEffect(() => {
+    activePollIdRef.current = activePollId
+  }, [activePollId])
+
+  useEffect(() => {
+    const unsubscribeState = pollRealtimeClient.addStateListener((state) => {
+      setConnectionState(state)
+    })
+
+    const unsubscribeVote = pollRealtimeClient.addVoteListener(() => {
+      const currentPollId = activePollIdRef.current
+      if (!currentPollId) return
+
+      void queryClient.invalidateQueries({ queryKey: pollKeys.detail(currentPollId) })
+      void queryClient.invalidateQueries({ queryKey: pollKeys.all })
+    })
+
+    return () => {
+      unsubscribeState()
+      unsubscribeVote()
+    }
+  }, [queryClient])
+
+  useEffect(() => {
+    const syncGroups = async () => {
+      if (!activePollId) {
+        if (previousPollIdRef.current) {
+          await pollRealtimeClient.leavePoll(previousPollIdRef.current)
+          previousPollIdRef.current = null
+        }
+        return
+      }
+
+      if (previousPollIdRef.current && previousPollIdRef.current !== activePollId) {
+        await pollRealtimeClient.leavePoll(previousPollIdRef.current)
+      }
+
+      await pollRealtimeClient.joinPoll(activePollId)
+      previousPollIdRef.current = activePollId
+    }
+
+    void syncGroups()
+  }, [activePollId])
+
+  return { connectionState }
+}
+```
+
+### TanStack Query invalidation
+
+When `ReceiveVote` fires, the vote listener calls `queryClient.invalidateQueries` for both `pollKeys.detail(currentPollId)` and `pollKeys.all`. This marks the cached data stale and triggers a background refetch, so the `PollChart` and `PollOptions` components re-render with updated `voteCount` values without any manual intervention.
+
+## Hub methods reference
+
+| Method | Direction | Description |
+| --- | --- | --- |
+| `JoinPoll(pollId)` | Client → Server | Adds the caller's connection to the SignalR group for `pollId`. |
+| `LeavePoll(pollId)` | Client → Server | Removes the caller's connection from the group for `pollId`. |
+| `ReceiveVote(optionId)` | Server → Client | Sent to all members of a poll group when a vote is successfully recorded. Carries the ID of the option that received the vote. |
+
+## Connection lifecycle
+
+<Steps>
+  <Step title="Connect to /pollhub">
+    On the first call to `pollRealtimeClient.joinPoll`, `connect()` builds a new `HubConnection` pointed at `/pollhub` with `withAutomaticReconnect()` enabled, then starts the connection.
+  </Step>
+  <Step title="Join the poll group">
+    `connection.invoke('JoinPoll', pollId)` is sent to the hub, adding the client to the group that receives broadcast events for that poll.
+  </Step>
+  <Step title="Receive ReceiveVote events">
+    Each time any client votes on the poll, the server emits `ReceiveVote(optionId)` to the group. The registered vote listeners fire and invalidate the TanStack Query cache, causing a fresh fetch and UI update.
+  </Step>
+  <Step title="Leave the poll group">
+    When the user navigates away or selects a different poll, `connection.invoke('LeavePoll', pollId)` removes the client from the group, stopping further broadcasts for that poll.
+  </Step>
+</Steps>
+
+## PollRealtimeStatus component
+
+`PollRealtimeStatus` accepts the `HubConnectionState` value returned by `usePollRealtime` and renders a badge with the following labels:
+
+| State | Badge label | Badge variant |
+| --- | --- | --- |
+| `Connected` | SignalR conectado | `default` |
+| `Connecting` | Conectando... | `secondary` |
+| `Reconnecting` | Reconectando... | `secondary` |
+| `Disconnected` (or other) | Desconectado | `outline` |
+
+```typescript
+import { HubConnectionState } from '@microsoft/signalr'
+import { Badge } from '@/components/ui/badge'
+
+interface PollRealtimeStatusProps {
+  state: HubConnectionState
+}
+
+export function PollRealtimeStatus({ state }: PollRealtimeStatusProps) {
+  const status = resolveLabel(state)
+  return (
+    <Badge variant={status.variant} className="rounded-full px-3 py-1 text-xs">
+      {status.label}
+    </Badge>
+  )
+}
+```
+
+<Tip>
+  To observe real-time updates, open the app in two separate browser tabs. Cast a vote in one tab and watch the chart and option counters update live in the other tab without any page reload.
+</Tip>

@@ -1,0 +1,92 @@
+---
+title: Voting
+description: How vote submission works in FlashVote, from option selection to backend persistence and live broadcast.
+---
+
+Casting a vote requires a poll ID and an option ID. The backend increments the option's `VoteCount`, then broadcasts the update to all connected clients via SignalR so every open tab reflects the new totals immediately.
+
+## Vote submission flow
+
+<Steps>
+  <Step title="User selects an option">
+    The `PollOptions` component renders one button per option. Clicking a button calls `onVote(option.id)`, which triggers the `useVoteMutation` hook.
+  </Step>
+  <Step title="POST /api/poll/{pollId}/vote/{optionId}">
+    The mutation calls `voteOnPoll({ pollId, optionId })`, which issues a `POST` request to the vote endpoint. No request body is required — both IDs travel in the URL path.
+  </Step>
+  <Step title="Backend increments VoteCount">
+    `PollService.VoteAsync` delegates to the repository to atomically increment `VoteCount` on the matched `Option` row. It returns `true` on success.
+  </Step>
+  <Step title="SignalR broadcast">
+    After a successful increment, the service sends `ReceiveVote(optionId)` to all clients in the poll's SignalR group via `IHubContext<PollHub>`.
+  </Step>
+  <Step title="All clients update">
+    Every browser subscribed to that poll receives `ReceiveVote` and triggers a TanStack Query cache invalidation, causing a fresh `GET /api/poll/{id}` fetch.
+  </Step>
+</Steps>
+
+## curl example
+
+```bash
+curl -X POST http://localhost:5000/api/poll/3fa85f64-5717-4562-b3fc-2c963f66afa6/vote/7c9e6679-7425-40de-944b-e07fc1f90ae7
+```
+
+A successful response returns HTTP `200 OK` with the body `true`.
+
+## useVoteMutation hook
+
+The `useVoteMutation` hook wraps the vote API call and automatically invalidates the relevant TanStack Query caches on success.
+
+```typescript
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { pollKeys } from '@/lib/query-keys'
+import { voteOnPoll } from '@/services/poll-api'
+import type { VoteParams } from '@/types/poll'
+
+export function useVoteMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (payload: VoteParams) => voteOnPoll(payload),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: pollKeys.detail(variables.pollId) })
+      void queryClient.invalidateQueries({ queryKey: pollKeys.all })
+    },
+  })
+}
+```
+
+The `VoteParams` type is:
+
+```typescript
+export interface VoteParams {
+  pollId: string
+  optionId: string
+}
+```
+
+Call the mutation from a component:
+
+```typescript
+const { mutate: vote, isPending } = useVoteMutation()
+
+// inside an event handler:
+vote({ pollId, optionId })
+```
+
+## When the endpoint returns false
+
+The vote endpoint returns `404 Not Found` when `VoteAsync` returns `false`. This happens in two cases:
+
+- The `pollId` does not match any poll in the database.
+- The `optionId` does not belong to any option in the database.
+
+Neither the option's `VoteCount` is incremented nor a SignalR event is emitted in the false path.
+
+<Warning>
+  There is no authentication on the vote endpoint. Any client can call `POST /api/poll/{pollId}/vote/{optionId}` as many times as they like, incrementing the same option's count on each request. Implement auth or a per-client vote guard before exposing FlashVote publicly.
+</Warning>
+
+<Tip>
+  To verify the full vote flow end-to-end, open the app in two browser tabs side by side. Cast a vote in one tab and watch the `PollChart` and `PollOptions` counters update in the other tab in real time via the SignalR broadcast.
+</Tip>

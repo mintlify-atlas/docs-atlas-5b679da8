@@ -1,0 +1,69 @@
+---
+title: Introduction
+description: FlashVote is a real-time polling platform with live vote visualization, built on ASP.NET Core and React with SignalR for instant updates.
+---
+
+FlashVote lets you create polls and watch votes roll in live — no page refresh needed. It combines a REST API for poll management with a SignalR hub that pushes vote updates to every connected client the moment a vote is cast.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the backend and frontend running in minutes
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Understand how the pieces fit together
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Explore every REST endpoint and SignalR method
+  </Card>
+  <Card title="Real-time Guide" icon="bolt" href="/features/realtime">
+    Deep dive into SignalR-driven live updates
+  </Card>
+</CardGroup>
+
+## What FlashVote does
+
+FlashVote is a two-app monorepo:
+
+- **FlashVoteBackend** — ASP.NET Core Web API with SignalR, Entity Framework Core, and SQLite
+- **FlashVoteFrontend** — React 19 + TypeScript app with TanStack Query, SignalR client, Recharts, and Tailwind CSS
+
+When a user votes, the backend persists the vote to SQLite, then broadcasts a `ReceiveVote` event over SignalR to every client watching the same poll. The frontend receives the event, invalidates its React Query cache, and re-fetches the updated results — so live bar charts update for all viewers simultaneously.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Live vote streaming" icon="chart-bar">
+    SignalR pushes `ReceiveVote` events to all clients in the poll group the instant a vote lands
+  </Card>
+  <Card title="Poll management API" icon="database">
+    Create polls, list all polls, and fetch individual poll results through clean REST endpoints
+  </Card>
+  <Card title="Live charts" icon="chart-line">
+    Recharts renders bar charts that update in real time as results arrive from the SignalR hub
+  </Card>
+  <Card title="Developer-friendly stack" icon="wrench">
+    OpenAPI/Swagger UI at `/swagger`, hot-reloading with `dotnet watch run` and Vite HMR
+  </Card>
+</CardGroup>
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend framework | ASP.NET Core (.NET 10) |
+| ORM / database | Entity Framework Core + SQLite |
+| Real-time | SignalR |
+| Frontend framework | React 19 + TypeScript + Vite |
+| Data fetching | TanStack React Query |
+| Real-time client | @microsoft/signalr |
+| Charts | Recharts |
+| Styling | Tailwind CSS + shadcn-style components |
+
+## Default endpoints
+
+| Service | URL |
+|---|---|
+| Backend API | `http://localhost:5000` |
+| SignalR hub | `http://localhost:5000/pollhub` |
+| Swagger UI | `http://localhost:5000/swagger` |
+| Frontend dev server | `http://localhost:5173` |

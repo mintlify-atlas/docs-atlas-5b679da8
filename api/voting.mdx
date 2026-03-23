@@ -1,0 +1,91 @@
+---
+title: Voting
+description: REST endpoint for submitting votes in FlashVote, including the real-time SignalR broadcast that follows each successful vote.
+---
+
+Submitting a vote increments the option's `VoteCount` in the database and immediately broadcasts a `ReceiveVote` event over SignalR to every client currently watching the same poll.
+
+---
+
+## POST /api/poll/\{pollId\}/vote/\{optionId\}
+
+Registers a vote for the specified option on the specified poll.
+
+<Warning>
+  There is no authentication on this endpoint. Nothing prevents a single user from voting multiple times. Each call to this endpoint increments `VoteCount` unconditionally.
+</Warning>
+
+### Path parameters
+
+<ParamField path="pollId" type="string" required>
+  UUID of the poll that contains the target option.
+</ParamField>
+
+<ParamField path="optionId" type="string" required>
+  UUID of the option to vote for.
+</ParamField>
+
+### Response
+
+`200 OK` — vote was successfully recorded. The body contains the boolean value `true`.
+
+```json
+true
+```
+
+`404 Not Found` — the poll or option does not exist, or the option does not belong to the given poll.
+
+### What happens on a successful vote
+
+1. The repository increments `VoteCount` on the matching `Option` record in SQLite.
+2. `PollService.VoteAsync` receives `true` from the repository.
+3. The service sends a `ReceiveVote(optionId)` message to the SignalR group identified by `pollId`.
+4. Every frontend client that has called `JoinPoll(pollId)` on the `/pollhub` connection receives the event.
+5. The frontend invalidates its React Query cache for the poll and re-fetches, causing live charts and vote counts to update without a page reload.
+
+<Note>
+  The SignalR broadcast is fire-and-forget from the HTTP response perspective. The `200 OK` is returned as soon as the vote is persisted, regardless of how many SignalR clients receive the event.
+</Note>
+
+### Examples
+
+<Tabs>
+  <Tab title="curl">
+    ```bash
+    curl -X POST \
+      http://localhost:5000/api/poll/3fa85f64-5717-4562-b3fc-2c963f66afa6/vote/a1b2c3d4-1111-2222-3333-aabbccddeeff
+    ```
+
+    Success response:
+
+    ```json
+    true
+    ```
+
+    Not-found response (`404`) returns no body — the HTTP status code alone indicates the resource was not found.
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { useVoteMutation } from '@/hooks/useVoteMutation'
+
+    function VoteButton({ pollId, optionId, label }: {
+      pollId: string
+      optionId: string
+      label: string
+    }) {
+      const { mutate: vote, isPending } = useVoteMutation()
+
+      return (
+        <button
+          disabled={isPending}
+          onClick={() => vote({ pollId, optionId })}
+        >
+          {label}
+        </button>
+      )
+    }
+    ```
+
+    `useVoteMutation` calls `voteOnPoll({ pollId, optionId })` from `poll-api.ts`, which sends `POST /api/poll/{pollId}/vote/{optionId}`. On success it invalidates both the poll detail query and the full polls list query, triggering a re-fetch that updates the UI with the latest vote counts.
+  </Tab>
+</Tabs>

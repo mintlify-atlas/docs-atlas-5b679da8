@@ -1,0 +1,303 @@
+---
+title: Polls
+description: REST endpoints for creating and retrieving FlashVote polls.
+---
+
+These endpoints let you list all polls, fetch a single poll with its options and vote counts, and create a new poll.
+
+---
+
+## GET /api/poll
+
+Returns all polls stored in the database. Each poll includes its options and current vote counts.
+
+### Response
+
+`200 OK` — array of poll objects.
+
+<ResponseField name="[]" type="object[]">
+  <Expandable title="Poll object properties" defaultOpen>
+    <ResponseField name="id" type="string" required>
+      Unique identifier for the poll (UUID v4).
+    </ResponseField>
+    <ResponseField name="title" type="string" required>
+      Title of the poll.
+    </ResponseField>
+    <ResponseField name="description" type="string" required>
+      Optional descriptive text for the poll.
+    </ResponseField>
+    <ResponseField name="createdAt" type="string" required>
+      ISO 8601 UTC timestamp of when the poll was created.
+    </ResponseField>
+    <ResponseField name="expiresAt" type="string | null" required>
+      ISO 8601 UTC expiry timestamp, or `null` if the poll has no expiry.
+    </ResponseField>
+    <ResponseField name="isClosed" type="boolean" required>
+      Whether the poll has been manually closed.
+    </ResponseField>
+    <ResponseField name="options" type="object[]" required>
+      <Expandable title="Option object properties">
+        <ResponseField name="id" type="string" required>
+          Unique identifier for the option (UUID v4).
+        </ResponseField>
+        <ResponseField name="text" type="string" required>
+          Display text for the option.
+        </ResponseField>
+        <ResponseField name="voteCount" type="number" required>
+          Number of votes this option has received.
+        </ResponseField>
+        <ResponseField name="pollId" type="string" required>
+          ID of the poll this option belongs to.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Examples
+
+<Tabs>
+  <Tab title="curl">
+    ```bash
+    curl http://localhost:5000/api/poll
+    ```
+
+    ```json
+    [
+      {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "title": "Best JavaScript framework?",
+        "description": "Pick your favourite frontend framework for 2025.",
+        "createdAt": "2025-06-01T12:00:00Z",
+        "expiresAt": "2025-12-31T23:59:59Z",
+        "isClosed": false,
+        "options": [
+          {
+            "id": "a1b2c3d4-1111-2222-3333-aabbccddeeff",
+            "text": "React",
+            "voteCount": 42,
+            "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          },
+          {
+            "id": "b2c3d4e5-2222-3333-4444-bbccddeeff00",
+            "text": "Vue",
+            "voteCount": 17,
+            "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          }
+        ]
+      }
+    ]
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { usePolls } from '@/hooks/usePolls'
+
+    function PollListPage() {
+      const { data: polls, isLoading } = usePolls()
+
+      if (isLoading) return <p>Loading...</p>
+
+      return (
+        <ul>
+          {polls?.map(poll => (
+            <li key={poll.id}>{poll.title}</li>
+          ))}
+        </ul>
+      )
+    }
+    ```
+
+    The `usePolls` hook calls `getPolls()` from `poll-api.ts`, which sends `GET /api/poll` and returns `PollListItem[]`.
+  </Tab>
+</Tabs>
+
+---
+
+## GET /api/poll/\{id\}
+
+Returns a single poll by its UUID, including all options and their current vote counts.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The UUID of the poll to retrieve.
+</ParamField>
+
+### Response
+
+`200 OK` — a single poll object (same schema as the items in the list above).
+
+`404 Not Found` — no poll with the given ID exists.
+
+### Examples
+
+<Tabs>
+  <Tab title="curl">
+    ```bash
+    curl http://localhost:5000/api/poll/3fa85f64-5717-4562-b3fc-2c963f66afa6
+    ```
+
+    ```json
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "title": "Best JavaScript framework?",
+      "description": "Pick your favourite frontend framework for 2025.",
+      "createdAt": "2025-06-01T12:00:00Z",
+      "expiresAt": "2025-12-31T23:59:59Z",
+      "isClosed": false,
+      "options": [
+        {
+          "id": "a1b2c3d4-1111-2222-3333-aabbccddeeff",
+          "text": "React",
+          "voteCount": 42,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        },
+        {
+          "id": "b2c3d4e5-2222-3333-4444-bbccddeeff00",
+          "text": "Vue",
+          "voteCount": 17,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        },
+        {
+          "id": "c3d4e5f6-3333-4444-5555-ccddeeff0011",
+          "text": "Svelte",
+          "voteCount": 9,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { usePollDetail } from '@/hooks/usePollDetail'
+
+    function PollDetailPage({ pollId }: { pollId: string }) {
+      const { data: poll, isLoading } = usePollDetail(pollId)
+
+      if (isLoading) return <p>Loading...</p>
+
+      return (
+        <div>
+          <h1>{poll?.title}</h1>
+          <ul>
+            {poll?.options.map(option => (
+              <li key={option.id}>
+                {option.text}: {option.voteCount} votes
+              </li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
+    ```
+
+    The `usePollDetail` hook calls `getPollById(pollId)` from `poll-api.ts`, which sends `GET /api/poll/{pollId}` and returns `PollDetail`.
+  </Tab>
+</Tabs>
+
+---
+
+## POST /api/poll
+
+Creates a new poll. The backend generates UUIDs for the poll and each option, sets `CreatedAt` to the current UTC time, and sets `IsClosed` to `false`.
+
+### Request body
+
+<ParamField body="title" type="string" required>
+  Title of the poll.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description for the poll. Defaults to an empty string if omitted.
+</ParamField>
+
+<ParamField body="expiresAt" type="string | null">
+  ISO 8601 UTC expiry timestamp. Pass `null` or omit to create a poll with no expiry.
+</ParamField>
+
+<ParamField body="options" type="string[]" required>
+  Array of option text strings. Each string becomes a voting option with `VoteCount` starting at zero.
+</ParamField>
+
+### Response
+
+`201 Created` — the newly created poll object, identical in shape to the response from `GET /api/poll/{id}`. The `Location` header points to the new resource URL.
+
+`400 Bad Request` — poll creation failed. Body contains `{ "message": "..." }`.
+
+### Examples
+
+<Tabs>
+  <Tab title="curl">
+    ```bash
+    curl -X POST http://localhost:5000/api/poll \
+      -H "Content-Type: application/json" \
+      -d '{
+        "title": "Best JavaScript framework?",
+        "description": "Pick your favourite frontend framework for 2025.",
+        "expiresAt": "2025-12-31T23:59:59Z",
+        "options": ["React", "Vue", "Svelte", "Angular"]
+      }'
+    ```
+
+    ```json
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "title": "Best JavaScript framework?",
+      "description": "Pick your favourite frontend framework for 2025.",
+      "createdAt": "2025-06-01T12:00:00Z",
+      "expiresAt": "2025-12-31T23:59:59Z",
+      "isClosed": false,
+      "options": [
+        {
+          "id": "a1b2c3d4-1111-2222-3333-aabbccddeeff",
+          "text": "React",
+          "voteCount": 0,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        },
+        {
+          "id": "b2c3d4e5-2222-3333-4444-bbccddeeff00",
+          "text": "Vue",
+          "voteCount": 0,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        },
+        {
+          "id": "c3d4e5f6-3333-4444-5555-ccddeeff0011",
+          "text": "Svelte",
+          "voteCount": 0,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        },
+        {
+          "id": "d4e5f6a7-4444-5555-6666-ddeeff001122",
+          "text": "Angular",
+          "voteCount": 0,
+          "pollId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { request } from '@/services/http'
+    import type { PollDetail } from '@/types/poll'
+
+    const newPoll = await request<PollDetail>('/api/poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Best JavaScript framework?',
+        description: 'Pick your favourite frontend framework for 2025.',
+        expiresAt: '2025-12-31T23:59:59Z',
+        options: ['React', 'Vue', 'Svelte', 'Angular'],
+      }),
+    })
+
+    console.log(newPoll.id) // UUID of the created poll
+    ```
+
+    Poll creation is not currently exposed through a dedicated React Query hook. The `request` helper from `poll-api.ts` can be called directly.
+  </Tab>
+</Tabs>

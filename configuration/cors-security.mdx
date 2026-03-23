@@ -1,0 +1,96 @@
+---
+title: CORS and security
+description: FlashVote's CORS configuration for development and what must change before deploying to production.
+---
+
+FlashVote's backend includes a CORS policy named `ReactPolicy` that is applied globally to all routes, including the REST API and the SignalR hub at `/pollhub`.
+
+## Current CORS policy
+
+The policy is defined in `Program.cs`:
+
+```csharp
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("ReactPolicy", policy =>
+    {
+        policy.SetIsOriginAllowed(_ => true)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+```
+
+And applied to the pipeline with:
+
+```csharp
+app.UseCors("ReactPolicy");
+```
+
+`SetIsOriginAllowed(_ => true)` accepts every origin unconditionally. Combined with `AllowCredentials()`, this means any website can make credentialed cross-origin requests to the API.
+
+<Warning>
+  This configuration allows any origin to make credentialed requests to the backend. It is intended for local development only and is not suitable for production. A malicious site could interact with the API on behalf of a user's browser session.
+</Warning>
+
+## HTTPS redirection
+
+HTTPS redirection is disabled in development to simplify local setup:
+
+```csharp
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+```
+
+In production this block is active, and all HTTP requests are redirected to HTTPS automatically.
+
+## Production checklist
+
+Before deploying FlashVote to a public or shared environment, address each of the following:
+
+<Steps>
+  <Step title="Restrict allowed origins">
+    Replace `SetIsOriginAllowed(_ => true)` with an explicit list of trusted origins:
+
+    ```csharp
+    policy.WithOrigins("https://yourdomain.com")
+          .AllowAnyHeader()
+          .AllowAnyMethod()
+          .AllowCredentials();
+    ```
+
+    Using `AllowAnyOrigin()` together with `AllowCredentials()` is not permitted by the CORS specification and will throw at startup.
+  </Step>
+  <Step title="Enforce HTTPS">
+    Bind the backend to an HTTPS URL and obtain a valid TLS certificate. Remove or invert the `IsDevelopment()` guard around `UseHttpsRedirection()` if you want redirection in all environments.
+  </Step>
+  <Step title="Move the connection string to configuration">
+    The SQLite connection string is currently hardcoded in `Program.cs`. For production, move it to an environment variable or a secrets manager so it can be changed without recompiling.
+  </Step>
+  <Step title="Set AllowedHosts">
+    The default `appsettings.json` sets `"AllowedHosts": "*"`. In production, restrict this to your domain:
+
+    ```json
+    "AllowedHosts": "yourdomain.com"
+    ```
+  </Step>
+  <Step title="Review logging levels">
+    The default log level is `Information`. Consider raising it to `Warning` in production to reduce noise and avoid logging sensitive request data.
+  </Step>
+</Steps>
+
+## Current security limitations
+
+FlashVote is an early-stage project. Beyond CORS, the following security controls are not yet implemented:
+
+- **No authentication or authorization.** Any client can create polls, submit votes, and read all poll data without identifying itself.
+- **No vote deduplication.** The same client can call `POST /api/poll/{pollId}/vote/{optionId}` any number of times. There is no per-user or per-IP limit on votes.
+- **No rate limiting.** The API accepts requests at any rate. A client can flood the vote endpoint without restriction.
+- **No input validation beyond model binding.** Poll titles and option text are not sanitized or length-limited beyond what ASP.NET Core model binding provides by default.
+
+<Note>
+  Authentication and authorization are listed as not yet implemented in the project roadmap. When auth is added, the CORS policy should be revisited alongside it — `AllowCredentials()` is most relevant once sessions or tokens are in use.
+</Note>

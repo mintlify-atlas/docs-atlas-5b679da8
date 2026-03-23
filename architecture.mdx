@@ -1,0 +1,140 @@
+---
+title: Architecture
+description: FlashVote's two-app monorepo design — how the ASP.NET Core backend and React frontend are structured and how data flows between them.
+---
+
+FlashVote is organized as a two-app monorepo. The backend exposes a REST API and a SignalR hub; the frontend consumes both to render a live polling dashboard.
+
+## Monorepo structure
+
+```
+FlashVote/
+├── FlashVoteBackend/      # ASP.NET Core Web API + SignalR hub
+│   ├── Controllers/       # REST endpoints
+│   ├── Services/          # Business logic
+│   ├── Repositories/      # Persistence abstraction
+│   ├── Hubs/              # SignalR hub
+│   ├── Data/              # EF Core DbContext
+│   └── Models/            # Entities and DTOs
+└── FlashVoteFrontend/     # React 19 + TypeScript app
+    └── src/
+        ├── services/      # HTTP and SignalR clients
+        ├── hooks/         # React Query and realtime hooks
+        └── components/    # Dashboard and UI components
+```
+
+## High-level data flow
+
+The following steps describe what happens from the moment the app loads to when a vote appears live in every connected browser:
+
+1. **Frontend fetches polls via HTTP** — `usePolls` calls `GET /api/poll` through the `poll-api` service and caches the result with TanStack React Query.
+2. **Frontend joins a SignalR group** — when a poll is selected, `usePollRealtime` invokes `JoinPoll(pollId)` on the `PollHub`, subscribing the connection to that poll's broadcast group.
+3. **User votes through HTTP** — `useVoteMutation` calls `POST /api/poll/{pollId}/vote/{optionId}`, which hits `PollController.Vote`.
+4. **Backend persists the vote and broadcasts** — `PollService` increments the option's `VoteCount` in SQLite via EF Core, then the hub sends a `ReceiveVote(optionId)` event to every connection in the poll group.
+5. **Frontend invalidates the cache and re-fetches** — `usePollRealtime` receives `ReceiveVote`, calls `queryClient.invalidateQueries` for the poll detail and poll list keys, and React Query re-fetches the updated results, updating the live charts for all viewers.
+
+## Tech stacks
+
+<CardGroup cols={2}>
+  <Card title="Backend" icon="server">
+    **ASP.NET Core (.NET 10)** — Web API framework
+
+    **Entity Framework Core** — ORM with SQLite for persistence
+
+    **SignalR** — WebSocket-based real-time hub
+
+    **OpenAPI / Swagger UI** — Auto-generated API docs at `/swagger`
+  </Card>
+  <Card title="Frontend" icon="browser">
+    **React 19 + TypeScript + Vite** — UI framework and build tool
+
+    **TanStack React Query** — Server state, caching, and cache invalidation
+
+    **@microsoft/signalr** — SignalR client with automatic reconnect
+
+    **Recharts + Tailwind CSS** — Live bar charts and utility-first styling
+  </Card>
+</CardGroup>
+
+## Backend layers
+
+### Controllers
+
+`PollController` maps HTTP routes to `PollService` calls. All routes are under `api/poll`.
+
+```csharp
+[ApiController]
+[Route("api/poll")]
+public class PollController : ControllerBase
+{
+    // GET  /api/poll
+    // GET  /api/poll/{id}
+    // POST /api/poll
+    // POST /api/poll/{pollId}/vote/{optionId}
+}
+```
+
+### Services and repositories
+
+`PollService` contains business logic and delegates persistence to `PollRepository`, which wraps the EF Core `ApplicationDbContext`. This layering keeps the controller thin and the data access testable in isolation.
+
+### Hubs
+
+`PollHub` manages SignalR group membership. Clients call `JoinPoll` when they open a poll and `LeavePoll` when they navigate away. The vote endpoint broadcasts `ReceiveVote` to the appropriate group after every successful vote.
+
+```csharp
+public class PollHub : Hub
+{
+    public async Task JoinPoll(string pollId) =>
+        await Groups.AddToGroupAsync(Context.ConnectionId, pollId);
+
+    public async Task LeavePoll(string pollId) =>
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, pollId);
+}
+```
+
+### Data and models
+
+`ApplicationDbContext` uses SQLite with the connection string `Data Source=flashvote.db`. The two core entities are `Poll` (with `Id`, `Title`, `Description`, `CreatedAt`, `ExpiresAt`, `IsClosed`, and `Options`) and `Option` (with `Id`, `Text`, `VoteCount`, and `PollId`).
+
+<Info>
+  The OpenAPI specification is served at `/openapi/v1.json` in development. The Swagger UI reads from this endpoint and is available at `/swagger`.
+</Info>
+
+## Frontend layers
+
+### src/services
+
+Two clients handle all external communication:
+
+- **`poll-api.ts`** — thin wrappers around the HTTP client for `getPolls`, `getPollById`, and `voteOnPoll`.
+- **`signalr.ts`** — `PollRealtimeClient` singleton that manages one shared `HubConnection`, exposes `joinPoll` / `leavePoll` methods, and dispatches `ReceiveVote` events to registered listeners.
+
+```typescript
+export const pollRealtimeClient = new PollRealtimeClient()
+```
+
+### src/hooks
+
+React hooks compose the service layer with React Query:
+
+| Hook | Responsibility |
+|---|---|
+| `usePolls` | Fetches and caches the poll list with `GET /api/poll` |
+| `usePollDetail` | Fetches and caches a single poll's options and vote counts |
+| `usePollRealtime` | Joins/leaves SignalR groups and invalidates the cache on `ReceiveVote` |
+| `useVoteMutation` | Submits a vote and invalidates the cache on success |
+
+### src/components
+
+The single-page `App` composes `PollList`, `PollChart`, `PollOptions`, and `PollRealtimeStatus` into the live dashboard. Shared primitives (`Card`, `Badge`, and others) follow the shadcn component pattern with Tailwind CSS utility classes.
+
+## Default ports and URLs
+
+| Service | URL |
+|---|---|
+| Backend API | `http://localhost:5000` |
+| SignalR hub | `http://localhost:5000/pollhub` |
+| OpenAPI spec | `http://localhost:5000/openapi/v1.json` |
+| Swagger UI | `http://localhost:5000/swagger` |
+| Frontend dev server | `http://localhost:5173` |

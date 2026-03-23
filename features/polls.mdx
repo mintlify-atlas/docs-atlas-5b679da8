@@ -1,0 +1,123 @@
+---
+title: Polls
+description: Create and manage polls in FlashVote, including options, expiry, and lifecycle state.
+---
+
+A poll is the core resource in FlashVote. Each poll has a title, an optional description, a list of voting options, an optional expiry timestamp, and a closed flag. Vote counts are tracked at the option level.
+
+## Data models
+
+### Poll
+
+```csharp
+public record Poll
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; }
+    public string Description { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public bool IsClosed { get; set; }
+    public List<Option> Options { get; set; }
+}
+```
+
+### Option
+
+```csharp
+public record Option
+{
+    public Guid Id { get; set; }
+    public string Text { get; set; }
+    public int VoteCount { get; set; }
+    public Guid PollId { get; set; }
+}
+```
+
+<Note>
+  `IsClosed` can be set to `true` to manually stop accepting votes. `ExpiresAt` is optional — when omitted, the poll stays open indefinitely until it is explicitly closed.
+</Note>
+
+## Creating a poll
+
+Use `CreatePollDto` to create a poll with its options in a single request. Options are provided as an array of strings; the backend creates an `Option` record for each entry with `VoteCount` starting at zero.
+
+```csharp
+public record CreatePollDto
+{
+    public string Title { get; set; }
+    public string Description { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public List<string> Options { get; set; }
+}
+```
+
+### Example request body
+
+```json
+{
+  "title": "Best JavaScript framework?",
+  "description": "Pick your favourite frontend framework for 2025.",
+  "expiresAt": "2025-12-31T23:59:59Z",
+  "options": ["React", "Vue", "Svelte", "Angular"]
+}
+```
+
+### curl example
+
+```bash
+curl -X POST http://localhost:5000/api/poll \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Best JavaScript framework?",
+    "description": "Pick your favourite frontend framework for 2025.",
+    "expiresAt": "2025-12-31T23:59:59Z",
+    "options": ["React", "Vue", "Svelte", "Angular"]
+  }'
+```
+
+The response is the created `Poll` object, including the generated `Id` values for the poll and each option.
+
+## Retrieving polls
+
+### List all polls
+
+```bash
+curl http://localhost:5000/api/poll
+```
+
+Returns an array of `Poll` objects, each including their nested `Options`.
+
+### Get a single poll
+
+```bash
+curl http://localhost:5000/api/poll/3fa85f64-5717-4562-b3fc-2c963f66afa6
+```
+
+Returns the full `Poll` object with options, or `404 Not Found` if the ID does not exist.
+
+## Poll lifecycle
+
+A poll moves through the following states from creation to completion:
+
+1. **Created** — the poll is persisted with `IsClosed: false` and all options at `VoteCount: 0`.
+2. **Open for voting** — users can submit votes against any option via `POST /api/poll/{pollId}/vote/{optionId}`.
+3. **Expired** — if `ExpiresAt` is set and the timestamp has passed, the frontend treats the poll as no longer accepting votes. The backend does not enforce expiry automatically.
+4. **Closed** — `IsClosed` is set to `true`, stopping the UI from submitting further votes.
+
+## Frontend components
+
+<CardGroup cols={2}>
+  <Card title="PollList" icon="list">
+    Renders all polls as selectable buttons. Highlights the active selection and shows an "Active" or "Closed" badge based on `isClosed`.
+  </Card>
+  <Card title="PollOptions" icon="check-square">
+    Displays each option as a clickable button showing the option text and current `voteCount`. Disables all buttons when the poll is closed or a vote is in flight.
+  </Card>
+  <Card title="PollChart" icon="bar-chart">
+    Renders a Recharts bar chart of all options with their `voteCount` values. Each bar is assigned a distinct color from a fixed palette.
+  </Card>
+  <Card title="PollRealtimeStatus" icon="wifi">
+    Displays a badge reflecting the current SignalR `HubConnectionState`: Connected, Connecting, Reconnecting, or Disconnected.
+  </Card>
+</CardGroup>

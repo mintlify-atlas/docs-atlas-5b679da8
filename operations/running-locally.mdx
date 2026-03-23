@@ -1,0 +1,144 @@
+---
+title: Running locally
+description: Start the full FlashVote stack — backend API, SignalR hub, and React frontend — on your local machine.
+---
+
+This page walks you through every step needed to run FlashVote locally, from cloning the repository to verifying real-time vote updates in the browser.
+
+## Prerequisites
+
+Install the following tools before you begin:
+
+| Tool | Required version |
+|---|---|
+| .NET SDK | 10 |
+| Node.js | 20+ |
+| npm | 10+ |
+
+Verify your installed versions:
+
+```bash
+dotnet --version
+node --version
+npm --version
+```
+
+## Startup sequence
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/R0N7w7/FlashVote.git
+    cd FlashVote
+    ```
+  </Step>
+
+  <Step title="Start the backend">
+    From the `FlashVoteBackend/` directory, restore dependencies, build, and run:
+
+    ```bash
+    cd FlashVoteBackend
+    dotnet restore
+    dotnet build
+    dotnet run
+    ```
+
+    The backend binds to `http://0.0.0.0:5000`. The REST API is available at `http://localhost:5000` and the SignalR hub at `http://localhost:5000/pollhub`.
+
+    <Tip>
+      Use `dotnet watch run` instead of `dotnet run` for hot-reload during development. The server restarts automatically whenever you save a source file.
+
+      ```bash
+      dotnet watch run
+      ```
+    </Tip>
+  </Step>
+
+  <Step title="Verify the backend is up">
+    Open `http://localhost:5000/swagger` in your browser. The Swagger UI lists every REST endpoint and lets you send test requests directly.
+
+    <Note>
+      The Swagger UI is only available when the backend is running in development mode. The raw OpenAPI JSON is at `http://localhost:5000/openapi/v1.json`.
+    </Note>
+  </Step>
+
+  <Step title="Configure the frontend environment">
+    Create a `.env` file inside `FlashVoteFrontend/` to point the frontend at your local backend:
+
+    ```bash
+    # FlashVoteFrontend/.env
+    VITE_API_BASE_URL=http://localhost:5000
+    ```
+
+    If this file is absent, the HTTP client falls back to its built-in default URL.
+  </Step>
+
+  <Step title="Start the frontend">
+    From the `FlashVoteFrontend/` directory, install dependencies and start the Vite dev server:
+
+    ```bash
+    cd FlashVoteFrontend
+    npm install
+    npm run dev
+    ```
+
+    The `dev` script runs `vite --host`, which makes the dev server reachable on all local network interfaces.
+  </Step>
+
+  <Step title="Open the app in your browser">
+    Vite prints the local URL when it starts — typically `http://localhost:5173`. Open that URL in your browser to access the FlashVote dashboard.
+  </Step>
+</Steps>
+
+## Useful commands
+
+### Backend
+
+| Command | Description |
+|---|---|
+| `dotnet build` | Compile the project and report any errors |
+| `dotnet watch run` | Start with hot-reload — restarts on file save |
+| `dotnet ef database update` | Apply pending EF Core migrations to `flashvote.db` |
+
+```bash
+# Compile the project
+dotnet build
+
+# Run with hot-reload
+dotnet watch run
+
+# Apply database migrations
+dotnet ef database update
+```
+
+### Frontend
+
+| Command | Description |
+|---|---|
+| `npm run lint` | Run ESLint across all source files |
+| `npm run build` | Type-check with `tsc` and produce a production bundle |
+| `npm run preview` | Serve the production build locally for inspection |
+
+```bash
+# Lint the source
+npm run lint
+
+# Build for production
+npm run build
+
+# Preview the production build
+npm run preview
+```
+
+## Testing real-time behavior
+
+Use this manual flow to confirm that SignalR vote broadcasting works end-to-end:
+
+1. Start the backend.
+2. Start the frontend.
+3. Open the app in **two separate browser tabs** at `http://localhost:5173`.
+4. Select the same poll in both tabs.
+5. Vote on an option in tab A.
+6. Confirm that the charts and vote counts refresh in tab B without a page reload.
+
+The vote travels from the frontend through `POST /api/poll/{pollId}/vote/{optionId}`. The backend persists it and broadcasts a `ReceiveVote` event over SignalR to every client in the poll group. The frontend receives the event, invalidates its React Query cache, and re-fetches the updated results.

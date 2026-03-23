@@ -1,0 +1,86 @@
+---
+title: Troubleshooting
+description: Diagnose and fix common FlashVote issues, including CORS errors, missing real-time updates, and build warnings.
+---
+
+This page covers the most common problems you may encounter when running FlashVote locally and how to resolve them.
+
+## Common issues
+
+<AccordionGroup>
+  <Accordion title="CORS errors">
+    CORS errors appear in the browser console when the frontend cannot reach the backend due to a mismatched origin.
+
+    **Steps to resolve:**
+
+    1. Confirm the backend is running and bound to the expected host and port (`http://0.0.0.0:5000`).
+    2. Confirm `VITE_API_BASE_URL` in `FlashVoteFrontend/.env` matches the active backend URL.
+
+    ```bash
+    # FlashVoteFrontend/.env
+    VITE_API_BASE_URL=http://localhost:5000
+    ```
+
+    <Note>
+      The backend CORS policy (`ReactPolicy`) is currently set to allow any origin with credentials, which is intentional for local development. If you have changed the backend URL or port, update `VITE_API_BASE_URL` to match.
+    </Note>
+  </Accordion>
+
+  <Accordion title="No real-time updates">
+    If vote counts and charts do not refresh in other tabs after a vote is cast, the SignalR connection may not be established correctly.
+
+    **Steps to resolve:**
+
+    1. Confirm the frontend is connecting to `/pollhub` — check the Network tab in browser devtools for a WebSocket or SSE connection to `http://localhost:5000/pollhub`.
+    2. Confirm that selecting an active poll triggers a `JoinPoll` call on the hub. Without joining the poll group, the client will not receive `ReceiveVote` broadcasts.
+    3. Confirm the vote endpoint returns a success response. Open the Network tab and check that `POST /api/poll/{pollId}/vote/{optionId}` returns a `200` status. If it fails, the backend will not broadcast the `ReceiveVote` event.
+  </Accordion>
+
+  <Accordion title="Build warnings about bundle size">
+    You may see Vite warnings about chunk sizes exceeding the default limit when building the frontend.
+
+    **Cause:**
+
+    Recharts and `@microsoft/signalr` are both sizable libraries that increase the total bundle size.
+
+    **Recommended approach:**
+
+    Consider route-based code splitting to distribute these dependencies across lazily loaded chunks, reducing the size of the initial bundle.
+
+    <Note>
+      These warnings do not prevent the build from completing or the app from running. They are informational and indicate an optimization opportunity.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Checking backend health
+
+Use `curl` to verify the backend is running and the API is responding before investigating frontend or SignalR issues:
+
+```bash
+# Check that the API returns a list of polls
+curl http://localhost:5000/api/poll
+
+# Fetch a single poll by ID
+curl http://localhost:5000/api/poll/{id}
+```
+
+A successful response returns JSON. A connection-refused error means the backend process is not running on port `5000`.
+
+<Note>
+  You can also use the Swagger UI at `http://localhost:5000/swagger` to send requests interactively without writing curl commands. It is available when the backend runs in development mode.
+</Note>
+
+## Checking the SignalR connection
+
+To confirm that the frontend establishes a SignalR connection to `/pollhub`:
+
+1. Open your browser's **DevTools** (F12 or right-click → Inspect).
+2. Go to the **Network** tab.
+3. Filter by **WS** (WebSocket) or **All** and reload the page.
+4. Look for a request to `http://localhost:5000/pollhub`. The connection will appear as a WebSocket upgrade or a long-lived HTTP SSE stream depending on the transport negotiated by the SignalR client.
+5. Click the connection entry to inspect messages. You should see `JoinPoll` being sent when you open a poll, and `ReceiveVote` messages arriving when votes are cast.
+
+<Note>
+  If no `/pollhub` connection appears, confirm that `VITE_API_BASE_URL` is set correctly in `FlashVoteFrontend/.env` and that the backend is running.
+</Note>
