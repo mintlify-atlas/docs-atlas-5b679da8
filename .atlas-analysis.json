@@ -1,0 +1,91 @@
+{
+  "projectType": "saas",
+  "projectName": "FlashVote",
+  "projectDescription": "A real-time polling platform with live vote visualization, built on ASP.NET Core and React with SignalR for instant updates.",
+  "theme": "palm",
+  "primaryColor": "#6366F1",
+  "lightColor": "#EEF2FF",
+  "darkColor": "#312E81",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/polls",
+              "features/voting",
+              "features/realtime"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment",
+              "configuration/cors-security"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/running-locally",
+              "operations/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/polls",
+              "api/voting"
+            ]
+          },
+          {
+            "group": "SignalR",
+            "pages": [
+              "api/signalr"
+            ]
+          },
+          {
+            "group": "Data Model",
+            "pages": [
+              "api/data-model"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time vote updates via SignalR",
+    "Poll creation and management REST API",
+    "Live chart visualization with Recharts",
+    "React + TypeScript frontend with TanStack Query",
+    "ASP.NET Core backend with EF Core and SQLite",
+    "SignalR group-based poll rooms for targeted broadcasts"
+  ],
+  "publicApiSurface": [
+    "GET /api/poll",
+    "GET /api/poll/{id}",
+    "POST /api/poll",
+    "POST /api/poll/{pollId}/vote/{optionId}",
+    "SignalR Hub: /pollhub",
+    "SignalR method: JoinPoll(string pollId)",
+    "SignalR method: LeavePoll(string pollId)",
+    "SignalR event: ReceiveVote(optionId)"
+  ]
+}
